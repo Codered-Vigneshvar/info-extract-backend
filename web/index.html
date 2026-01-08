@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HDSupply Label Extractor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <header class="app-header">
+        <div class="container">
+            <h1>HDSupply <span class="subtitle">Label Extractor</span></h1>
+        </div>
+    </header>
+
+    <main class="container main-content">
+        <div class="grid-layout">
+            <!-- Left Panel: Input & Controls -->
+            <section class="panel input-panel">
+                <div class="card">
+                    <h2>Image Upload</h2>
+                    <div class="upload-area" id="drop-zone">
+                        <input type="file" id="file-input" accept="image/*" hidden>
+                        <button class="btn btn-outline" onclick="document.getElementById('file-input').click()">Choose
+                            Image</button>
+                        <p class="helper-text">or drop file here</p>
+                    </div>
+
+                    <div class="preview-container" id="preview-container" style="display: none;">
+                        <h3>Preview</h3>
+                        <div class="img-wrapper">
+                            <img id="image-preview" src="" alt="Preview">
+                        </div>
+                    </div>
+
+                    <div class="control-group" id="controls" style="display: none;">
+                        <button class="btn btn-primary btn-block" id="check-quality-btn" style="display: none;">Check
+                            Quality</button>
+
+                        <div id="quality-result" class="quality-status" style="display: none;">
+                            <!-- Populated by JS -->
+                        </div>
+
+                        <button class="btn btn-accent btn-block" id="extract-btn" disabled>Extract Data</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Results -->
+            <section class="panel results-panel">
+                <div class="card">
+                    <div class="tabs">
+                        <button class="tab-btn active" data-tab="extracted-data">Extracted Data</button>
+                        <button class="tab-btn" data-tab="history">History</button>
+                        <button class="tab-btn" data-tab="ocr-text">OCR Text</button>
+                    </div>
+
+                    <div class="tab-content" id="extracted-data">
+                        <div id="loading-indicator" class="loading hidden">
+                            <div class="spinner"></div>
+                            <p>Processing...</p>
+                        </div>
+                        <div id="results-table-container">
+                            <p class="placeholder-text">Upload an image and run extraction to see results.</p>
+                        </div>
+                        <div class="actions-footer" style="margin-top: 1rem; text-align: right; display: none;"
+                            id="edit-actions">
+                            <span id="save-status"
+                                style="margin-right: 15px; font-weight: 500; font-size: 0.9rem;"></span>
+                            <button class="btn btn-primary" id="save-changes-btn">Save Changes</button>
+                        </div>
+                    </div>
+
+                    <div class="tab-content hidden" id="ocr-text">
+                        <pre id="ocr-raw-text" class="code-block"></pre>
+                    </div>
+
+                    <div class="tab-content hidden" id="history">
+                        <div id="history-list" class="history-list">
+                            <p class="placeholder-text">Loading history...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Bottom Panel: Metrics -->
+        <section class="panel metrics-panel">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Metrics Logs</h2>
+                    <button class="btn btn-sm" id="refresh-metrics-btn">Refresh</button>
+                </div>
+                <div class="table-wrapper">
+                    <table id="metrics-table">
+                        <thead>
+                            <!-- Populated by JS -->
+                        </thead>
+                        <tbody>
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

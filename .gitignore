@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment
+.env
+
+# Storage artifacts (Keep empty folders if needed, but ignore content)
+storage/
+*.log
+
+# Mobile App (Excluded from Backend Repo)
+mobile-app/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,92 @@
+You are extracting label information from a product/package image.
+
+OUTPUT REQUIREMENTS:
+- Return ONLY a single valid JSON object
+- No markdown code blocks (no ```json or ```)
+- No explanations before or after the JSON
+- No additional text or commentary
+- The response must start with { and end with }
+
+FIELDS TO EXTRACT:
+Extract these fields only if clearly visible in the image:
+1. package_name - Full product/package name as printed on label
+2. brand_name - Brand or manufacturer name
+3. mfg_date - Manufacturing date (preserve exact format as shown)
+4. exp_date - Expiry/Best Before/Use By date (preserve exact format as shown)
+5. net_quantity - Net quantity/weight/volume including units (e.g., "500g", "1L")
+6. mrp_price - MRP or price with currency symbol if present (e.g., "₹50")
+7. batch_lot_no - Batch number, Lot number, or Code number
+
+FIELD STRUCTURE:
+Each field must return:
+{
+  "value": string or null,
+  "confidence": number between 0.0 and 1.0,
+  "evidence": array of exact text snippets from the image
+}
+
+CONFIDENCE SCORING RULES (BE STRICT):
+- 0.95-1.0: Text is crystal clear, perfectly legible, unambiguous, and complete
+- 0.85-0.94: Text is clearly visible with only minor imperfections (slight blur/shadow)
+- 0.70-0.84: Text is readable but has moderate issues (faded, small, partially obscured)
+- 0.50-0.69: Text is barely readable or requires significant inference
+- Below 0.50: Set value to null instead - text is too unclear
+
+ANTI-HALLUCINATION RULES (CRITICAL):
+1. NEVER invent or guess information not visible in the image
+2. NEVER use typical/common values as substitutes for missing data
+3. NEVER reformat dates or values - preserve exactly as shown
+4. If text is unclear or ambiguous, use lower confidence OR set to null
+5. Evidence array must contain EXACT text snippets from image, not descriptions
+6. If you cannot find clear evidence for a field, set value to null
+7. Do not use prior knowledge about products to fill in missing information
+
+ADDITIONAL FIELD:
+Include one additional field:
+- raw_text_guess: string containing best-effort transcription of ALL visible text on the package
+
+EXAMPLE OUTPUT FORMAT:
+{
+  "package_name": {
+    "value": "Organic Whole Wheat Flour",
+    "confidence": 0.95,
+    "evidence": ["Organic Whole Wheat Flour"]
+  },
+  "brand_name": {
+    "value": "Nature's Best",
+    "confidence": 0.92,
+    "evidence": ["Nature's Best"]
+  },
+  "mfg_date": {
+    "value": "15/03/2024",
+    "confidence": 0.88,
+    "evidence": ["MFG: 15/03/2024"]
+  },
+  "exp_date": {
+    "value": "15/09/2024",
+    "confidence": 0.88,
+    "evidence": ["Best Before: 15/09/2024"]
+  },
+  "net_quantity": {
+    "value": "1 kg",
+    "confidence": 0.93,
+    "evidence": ["Net Wt: 1 kg"]
+  },
+  "mrp_price": {
+    "value": "₹85",
+    "confidence": 0.90,
+    "evidence": ["MRP ₹85"]
+  },
+  "batch_lot_no": {
+    "value": "L2024030501",
+    "confidence": 0.87,
+    "evidence": ["Batch No: L2024030501"]
+  },
+  "raw_text_guess": "Nature's Best | Organic Whole Wheat Flour | Net Wt: 1 kg | MRP ₹85 | MFG: 15/03/2024 | Best Before: 15/09/2024 | Batch No: L2024030501"
+}
+
+REMEMBER: 
+- Output must be valid, parseable JSON only
+- Be conservative with confidence scores
+- Never fabricate information
+- Set value to null when uncertain rather than guessing

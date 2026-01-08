@@ -1,0 +1,11 @@
+Application overview
+--------------------
+- Entry points: FastAPI serves `/` (frontend), `/api/quality` (quality-only), `/api/extract` (full pipeline), `/api/history`, `/api/metrics`, `/api/save_edits`.
+- Image intake: frontend uploads multipart image; backend keeps the original (used for LLM vision) unchanged on disk.
+- Quality gate (hard rejects): blur<70, min(width,height)<600, brightness<20 or >245 → return 400 with a short reason. If none hit, quality_pass=True and processing continues.
+- Conditional enhancement (OCR-only): if quality accepted, optionally apply gamma for low light, brightness scaling for overexposed, CLAHE for low contrast, mild unsharp mask for slight blur. Safety check: if enhanced blur drops <70 or contrast drops >20%, fall back to original for OCR. Metadata recorded: applied, steps, fallback_to_original, used_image.
+- OCR engine: defaults to EasyOCR (env `OCR_ENGINE`, default `easyocr`; set `tesseract` to switch). Languages via `EASYOCR_LANGS` (default `en`). OCR runs on the enhanced-or-original OCR image. LLM always sees the original image plus OCR text snippet.
+- Verification (evidence gating): after LLM JSON, each field is checked against OCR text (normalized, currency normalized). Key fields (MRP/Price, MFG Date, EXP/Best Before Date, Net Quantity, Batch/Lot No) also require value to be on the same or ±1 line of a keyword. If not found, confidence capped at 0.69 and `verification_flags=["not_found_in_ocr"]`; verification_failures is tallied. Validation is not implemented yet (always 0).
+- Response/run storage: each run saved to `storage/results/<id>.json` with fields_table, raw_json, OCR text/metrics, quality, enhancement_meta, verification_failures, sure/unsure counts. Response payload includes the same plus quality/enhancement info.
+- Metrics logging: `metrics/metrics_log.txt` records run_id, timestamp, quality_pass, blur/brightness, OCR avg conf/num lines, sure/unsure counts, verification_failures, validation_failures (0), total_latency_ms.
+- Config via env: Google project/location/model, OCR engine/langs, quality thresholds (defaults: blur 70, min dims 600, brightness min 20, max 245), and other existing settings (LLM provider/model).

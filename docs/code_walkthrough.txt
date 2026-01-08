@@ -1,0 +1,119 @@
+Code Walkthrough (project overview and file-by-file flow)
+========================================================
+
+This document explains each major file, with an overall description, a structural map, and a line-by-line/section-by-section walkthrough in file order.
+
+main.py (FastAPI backend)
+-------------------------
+Role: Entry point for the API and web serving. Handles quality check, enhancement selection, OCR, LLM extraction, verification, result persistence, history, metrics logging, and edits.
+
+Structure (top-down):
+- Imports and global config: os/env, paths, logging, constants (EXPECTED_FIELDS, METRICS columns), prompt augmentation.
+- FastAPI app setup + CORS + static serving.
+- Endpoints: `/` (index), `/public` static, `/api/quality`, `/api/extract`, `/api/save_edits`, `/api/history`, `/api/history/{id}`, `/api/metrics`.
+- Helpers: normalize_fields, _usage_to_dict, append_metrics_row, plus type coercion utilities.
+
+Walkthrough:
+- Imports: standard libs, cv2/numpy, FastAPI, logging, csv, and local agent helpers (quality/ocr/LLM).
+- Environment load: dotenv, logging config; ROOT/PUBLIC/STORAGE/RESULTS/METRICS paths; metrics file and columns defined.
+- Prompt augmentation: LLM_ADDITIONAL_GUIDANCE added to prompt.txt at load time to request numeric/unit data for price/quantity.
+- EXPECTED_FIELDS: canonical list of label fields.
+- Directory setup: ensure storage/metrics folders exist.
+- FastAPI app and CORS: allow all origins/methods/headers.
+- Static root (`/`) returns index.html; `/public` serves static assets.
+- `/api/quality`:
+  - Reads uploaded image bytes, runs compute_image_quality (delegates to agent.analyze_quality), logs blur/brightness/contrast/size.
+  - Returns JSON with quality metrics/thresholds; does NOT log metrics to file (only extraction does).
+- `/api/extract` (core pipeline):
+  - Load prompt.txt and append additional guidance.
+  - Read upload, decode image with cv2; fail early if decode fails.
+  - Quality analysis via agent.analyze_quality (adaptive blur + ROI); no early reject (continues even if hard_reject flagged).
+  - Enhancement: agent.enhance_for_ocr_if_needed returns OCR image + metadata (steps, fallback, used_image).
+  - OCR: agent.run_ocr on the OCR image (EasyOCR default, Tesseract optional).
+  - Save original image to storage/images.
+  - LLM extraction: agent.extract_label_json (returns JSON + usage). Errors become HTTP 500.
+  - Verification: agent.verify_against_ocr caps confidence/flags missing evidence.
+  - Type coercion: coerce_field_types adds value_num/unit/currency for price/quantity.
+  - Normalize fields: normalize_fields builds table rows (status sure/unsure) and carries verification_flags, value_num, unit, currency.
+  - Counts sure/unsure, packages quality/enhancement/ocr data.
+  - Persist result JSON to storage/results/<run_id>.json.
+  - Response payload mirrors result (fields, raw_json, ocr metrics/text, quality, enhancement_meta, llm_usage).
+  - Metrics logging: append_metrics_row writes a single row per extract (quality_only rows removed), including tokens/latency, verification_failures.
+- `/api/save_edits`: loads a prior run, applies edited_fields to fields_table/raw_json, writes a new run with edited_from metadata.
+- `/api/history`: lists runs by modified time (id, created_at, sure/unsure, edited_from).
+- `/api/history/{run_id}`: returns a saved result JSON.
+- `/api/metrics`: reads metrics_log.txt; if missing/empty returns header with empty rows. No rebuild from saved results (log-only).
+- normalize_fields: clamps confidence, sets status, preserves evidence, verification_flags, value_num, unit, currency.
+- _usage_to_dict: extracts prompt/candidates/total tokens from usage_metadata.
+- append_metrics_row: ensures header, migrates legacy columns, writes tab-separated rows.
+- Coercion helpers: parse price/quantity to add value_num/unit/currency and clean string values.
+
+agent.py (vision, OCR, quality, LLM helper)
+-------------------------------------------
+Role: Houses image preprocessing, OCR wrappers (EasyOCR/Tesseract), quality analysis with adaptive blur/ROI, conditional enhancements, verification against OCR, and LLM invocation.
+
+Structure (top-down):
+- Imports, env config (quality thresholds, OCR engine/langs, Tesseract path detection), model globals.
+- Preprocess for OCR: grayscale, resize to min width 1200, denoise, blur, Otsu threshold.
+- OCR grouping: image_to_data grouping into lines, confidence metrics.
+- OCR runners: _run_tesseract, _run_easyocr, run_ocr switch.
+- Quality analysis: _compute_basic_quality (ROI Laplacian, edge coverage, brightness/contrast), analyze_quality with adaptive blur threshold.
+- Enhancements: gamma for low light, brightness scaling for overexposed, CLAHE for low contrast, unsharp for slight blur, safety fallback.
+- Verification: normalize text/currency, proximity check for key fields, cap confidence, set verification_flags.
+- LLM: build prompt with OCR_TEXT, call GenerativeModel, parse JSON, return along with usage.
+- Utility: build_ocr_text_block truncation, compute_image_quality wrapper used by /api/quality.
+
+Walkthrough (in order):
+- Env thresholds defaults: blur 70, brightness min 20/max 245, min dims 600x600.
+- OCR engine selection: OCR_ENGINE env (default easyocr); EasyOCR reader lazy init; Tesseract path detection (env/Program Files/LOCALAPPDATA).
+- preprocess_for_ocr: resize up if narrow, denoise, Gaussian blur, Otsu threshold.
+- _group_lines: aggregates Tesseract data into ordered lines with avg_conf, metrics.
+- run_ocr: decodes bytes if needed, routes to EasyOCR/Tesseract.
+- Quality:
+  - _compute_basic_quality: grayscale; Laplacian variance on ROI (largest edge contour); edge coverage; also full-frame Laplacian.
+  - analyze_quality: uses adaptive blur threshold (lower if edge coverage < 0.02), checks brightness/resolution thresholds, returns metrics + flags/hard_reject + blur_threshold_used.
+- Enhancements (enhance_for_ocr_if_needed):
+  - Gamma for brightness <40 (stronger <40, milder <50).
+  - Scale down intensity for >230 brightness.
+  - CLAHE if low contrast and mid brightness.
+  - Unsharp if blur in 70–80 and contrast >40.
+  - Safety: recompute metrics; if blur < threshold or contrast drops >20%, fallback to original. Records steps/applied/fallback/used_image.
+- Verification (verify_against_ocr):
+  - Normalize values and OCR text (lowercase, remove non-alnum, map ₹/rs/inr).
+  - Proximity check for key fields around keywords within ±1 line.
+  - If not found: add verification_flags=["not_found_in_ocr"], cap confidence to 0.69, increment failure count.
+- LLM call (extract_label_json):
+  - Builds combined prompt + image part, calls model.generate_content, returns parsed JSON + usage_metadata.
+- compute_image_quality: decodes image, delegates to analyze_quality, wraps metrics/thresholds/messages.
+
+public/ (web UI)
+----------------
+- index.html/style.css/script.js: Single-page UI hitting the backend. Key behaviors:
+  - script.js: handles image upload, calls /api/quality then /api/extract, renders results table, OCR/quality panels, history and metrics polling.
+  - style.css: dark theme with yellow accents matching mobile.
+
+docs/
+-----
+- app_overview.txt: High-level description of pipeline and endpoints (already present).
+- code_walkthrough.txt: This file.
+
+mobile/hdsupply-label-extractor/ (Expo React Native client)
+----------------------------------------------------------
+Role: Mobile app with similar look/flow to web; calls same backend.
+
+Files:
+- App.tsx: wraps Home screen in SafeAreaView/StatusBar.
+- src/config.ts: DEFAULT_BASE_URL (emulator loopback).
+- src/api.ts: fetch helpers for /api/quality, /api/extract, /api/history, /api/save_edits.
+- src/screens/Home.tsx: Main UI; pick image (expo-image-picker), save backend URL, run quality then extract, show results, raw JSON, history, edits; shows quality badges.
+- src/components/FieldRow.tsx: Field renderer with editable value; special handling for MRP (amount + currency) and Quantity (value + unit); shows confidence/status/evidence toggle.
+
+Runtime data
+------------
+- storage/images: saved originals from extracts.
+- storage/results: one JSON per run (fields_table, raw_json, quality, ocr, enhancement, verification, llm_usage, etc.).
+- metrics/metrics_log.txt: tab-delimited log, one row per extraction (header: METRICS_COLUMNS).
+
+Reading order suggestion
+------------------------
+1) app_overview.txt (context) -> main.py (endpoints/pipeline) -> agent.py (vision/ocr/verification) -> public/script.js (web UI flow) -> mobile/src (if using mobile). Finish with requirements.txt for deps and .env for config.*** End Patch
